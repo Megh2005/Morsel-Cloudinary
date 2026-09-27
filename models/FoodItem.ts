@@ -29,6 +29,26 @@ const FoodItemSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    isConsumable: {
+      type: Boolean,
+      default: true,
+    },
+    isStorable: {
+      type: Boolean,
+      default: true,
+    },
+    spoilageSeverity: {
+      type: String,
+      default: "fresh",
+    },
+    healthHazardWarning: {
+      type: String,
+      default: "",
+    },
+    disposalAdvice: {
+      type: String,
+      default: "",
+    },
     estimatedDaysLeft: {
       type: Number,
       default: 3,

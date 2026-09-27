@@ -22,6 +22,7 @@ import {
   Upload,
   RotateCcw,
   MapPin,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { translateBatch } from "@/lib/translateHelper";
@@ -219,6 +220,8 @@ export default function DashboardFeaturePage() {
         texts.push(an.portionSize || "");
         texts.push(an.spoilageNotes || "");
         texts.push(an.storageTips || "");
+        texts.push(an.healthHazardWarning || "");
+        texts.push(an.disposalAdvice || "");
         (an.recipes || []).forEach((r: any) => {
           texts.push(r.title || "");
           texts.push(r.instructions || "");
@@ -232,6 +235,8 @@ export default function DashboardFeaturePage() {
         portionSize: trans[idx++],
         spoilageNotes: trans[idx++],
         storageTips: trans[idx++],
+        healthHazardWarning: trans[idx++],
+        disposalAdvice: trans[idx++],
         recipes: (an.recipes || []).map((r: any) => ({
           ...r,
           title: trans[idx++],
@@ -487,25 +492,45 @@ export default function DashboardFeaturePage() {
   // Filtered inventory
   const filteredItems = inventoryItems;
 
-  const getUrgencyConfig = (risk: string, daysLeft: number) => {
-    if (risk === "high" || risk === "spoiled" || daysLeft <= 1) {
+  const getUrgencyConfig = (
+    risk: string,
+    daysLeft: number,
+    isConsumable?: boolean,
+    isStorable?: boolean,
+  ) => {
+    if (risk === "spoiled" || isConsumable === false || isStorable === false) {
+      return {
+        badge: "DO NOT CONSUME / SPOILED",
+        shortBadge: "SPOILED",
+        color: "bg-rose-700 text-white border-rose-950 font-black tracking-wide",
+        meter: "bg-rose-600",
+        isSpoiled: true,
+      };
+    }
+    if (risk === "high" || daysLeft <= 1) {
       return {
         badge: "EAT FIRST",
-        color: "bg-red-600 text-white border-red-700",
+        shortBadge: "EAT FIRST",
+        color: "bg-red-600 text-white border-red-700 font-bold",
         meter: "bg-red-500",
+        isSpoiled: false,
       };
     }
     if (risk === "medium" || daysLeft <= 3) {
       return {
         badge: `USE IN ${daysLeft}D`,
-        color: "bg-amber-600 text-white border-amber-700",
+        shortBadge: `${daysLeft}D LEFT`,
+        color: "bg-amber-600 text-white border-amber-700 font-bold",
         meter: "bg-amber-500",
+        isSpoiled: false,
       };
     }
     return {
       badge: "FRESH",
-      color: "bg-emerald-600 text-white border-emerald-800",
+      shortBadge: "FRESH",
+      color: "bg-emerald-600 text-white border-emerald-800 font-bold",
       meter: "bg-emerald-500",
+      isSpoiled: false,
     };
   };
 
@@ -907,21 +932,39 @@ export default function DashboardFeaturePage() {
               const currentTranslated = translatedScanResult?.translatedItems
                 ? translatedScanResult.translatedItems[selectedItemIndex]
                 : translatedScanResult;
+              const isItemSpoiled =
+                currentItem?.spoilageRisk === "spoiled" ||
+                currentItem?.isConsumable === false ||
+                currentItem?.isStorable === false;
               const currentUrgency = getUrgencyConfig(
                 currentItem?.spoilageRisk,
                 currentItem?.estimatedDaysLeft,
+                currentItem?.isConsumable,
+                currentItem?.isStorable,
               );
 
               return (
                 <div className="space-y-6">
                   {/* Top Notification Bar */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl border-2 border-slate-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200">
+                  <div
+                    className={`flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl border-2 ${
+                      isItemSpoiled
+                        ? "border-rose-700 bg-rose-50 dark:bg-rose-950/70 text-rose-950 dark:text-rose-100"
+                        : "border-slate-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200"
+                    }`}
+                  >
                     <div className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      {isItemSpoiled ? (
+                        <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 animate-pulse" />
+                      ) : (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      )}
                       <span className="font-bold text-xs sm:text-sm">
-                        {detectedItems.length > 1
-                          ? `All ${detectedItems.length} Food Items Recognized & Saved to Your Smart Fridge!`
-                          : "Item Saved to Your Smart Fridge Inventory!"}
+                        {isItemSpoiled
+                          ? `CRITICAL ALERT: ${currentTranslated?.itemName || currentItem?.itemName} is Spoiled / Rotten — Unsafe to Consume!`
+                          : detectedItems.length > 1
+                            ? `All ${detectedItems.length} Food Items Recognized & Saved to Your Smart Fridge!`
+                            : "Item Saved to Your Smart Fridge Inventory!"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -962,7 +1005,7 @@ export default function DashboardFeaturePage() {
                             {detectedItems.length} Food Items Identified
                           </span>
                           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            (Select an item to view its individual freshness diagnosis & rescue recipes)
+                            (Select an item to view its individual freshness diagnosis & safety advice)
                           </span>
                         </div>
                         {scanResult.locationContext && (
@@ -976,9 +1019,15 @@ export default function DashboardFeaturePage() {
                       <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-1 scrollbar-none">
                         {detectedItems.map((item: any, idx: number) => {
                           const isSelected = idx === selectedItemIndex;
+                          const isSpoiled =
+                            item.spoilageRisk === "spoiled" ||
+                            item.isConsumable === false ||
+                            item.isStorable === false;
                           const urg = getUrgencyConfig(
                             item.spoilageRisk,
                             item.estimatedDaysLeft,
+                            item.isConsumable,
+                            item.isStorable,
                           );
                           const displayName =
                             translatedScanResult?.translatedItems?.[idx]?.itemName ||
@@ -991,8 +1040,12 @@ export default function DashboardFeaturePage() {
                               onClick={() => setSelectedItemIndex(idx)}
                               className={`px-3.5 py-2 rounded-2xl border-2 font-bold text-xs flex items-center gap-2 transition-all whitespace-nowrap shrink-0 ${
                                 isSelected
-                                  ? "border-slate-900 bg-sky-900 text-white shadow-md scale-[1.02]"
-                                  : "border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                  ? isSpoiled
+                                    ? "border-rose-900 bg-rose-700 text-white shadow-md scale-[1.02]"
+                                    : "border-slate-900 bg-sky-900 text-white shadow-md scale-[1.02]"
+                                  : isSpoiled
+                                    ? "border-rose-400 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 hover:bg-rose-100"
+                                    : "border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                               }`}
                             >
                               <span>{displayName}</span>
@@ -1004,6 +1057,49 @@ export default function DashboardFeaturePage() {
                             </button>
                           );
                         })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PROMINENT SPOILAGE & HEALTH HAZARD ALERT BANNER */}
+                  {isItemSpoiled && (
+                    <div className="p-5 sm:p-6 rounded-3xl border-3 border-rose-600 bg-rose-50 dark:bg-rose-950/80 shadow-2xl space-y-4 text-left">
+                      <div className="flex items-start sm:items-center gap-3">
+                        <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 shadow-md">
+                          <ShieldAlert className="w-6 h-6 animate-pulse" />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                            CRITICAL FOOD SAFETY & HEALTH ALERT
+                          </span>
+                          <h3 className="text-base sm:text-xl font-black text-rose-950 dark:text-rose-100">
+                            DO NOT CONSUME: {currentTranslated?.itemName || currentItem?.itemName} is Spoiled & Unstorable
+                          </h3>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 space-y-2.5">
+                        <div className="text-xs sm:text-sm font-bold text-rose-950 dark:text-rose-200 leading-relaxed">
+                          <strong className="font-black text-rose-600 dark:text-rose-400">Health Hazard: </strong>
+                          {currentTranslated?.healthHazardWarning ||
+                            currentItem?.healthHazardWarning ||
+                            "Severe active decay, bacterial decomposition, or fungal mold detected. Ingestion presents a direct risk of mycotoxin poisoning and acute foodborne illness. DO NOT CONSUME."}
+                        </div>
+
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 pt-2 border-t border-rose-100 dark:border-rose-900 leading-relaxed">
+                          <strong className="font-black text-amber-700 dark:text-amber-400">Cross-Contamination Warning: </strong>
+                          DO NOT store this item inside your refrigerator or pantry. Decaying food releases airborne mold spores and ethylene gas that will rapidly spoil surrounding healthy food.
+                        </div>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-rose-100/80 dark:bg-rose-900/50 border border-rose-300 dark:border-rose-700 text-xs font-semibold text-rose-950 dark:text-rose-100 flex items-start gap-2.5">
+                        <Trash2 className="w-4 h-4 text-rose-700 dark:text-rose-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="font-black">Recommended Safe Disposal: </strong>
+                          {currentTranslated?.disposalAdvice ||
+                            currentItem?.disposalAdvice ||
+                            "Seal immediately in a designated compostable bag or disposal bin. Discard away from living and food-preparation zones."}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1043,8 +1139,20 @@ export default function DashboardFeaturePage() {
 
                         {/* Freshness Assessment Notes */}
                         {currentItem?.spoilageNotes && (
-                          <div className="p-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 text-xs font-semibold text-slate-900 dark:text-slate-100 leading-relaxed">
-                            <strong className="font-bold text-amber-950 dark:text-amber-200">
+                          <div
+                            className={`p-3.5 rounded-xl border leading-relaxed text-xs font-semibold ${
+                              isItemSpoiled
+                                ? "border-rose-300 dark:border-rose-800 bg-rose-50/90 dark:bg-rose-950/50 text-rose-950 dark:text-rose-100"
+                                : "border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 text-slate-900 dark:text-slate-100"
+                            }`}
+                          >
+                            <strong
+                              className={`font-bold ${
+                                isItemSpoiled
+                                  ? "text-rose-700 dark:text-rose-300"
+                                  : "text-amber-950 dark:text-amber-200"
+                              }`}
+                            >
                               Visual Freshness Assessment:{" "}
                             </strong>
                             {currentTranslated?.spoilageNotes ||
@@ -1102,76 +1210,140 @@ export default function DashboardFeaturePage() {
                           {currentTranslated?.itemName || currentItem?.itemName}
                         </h2>
 
-                        <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
-                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
-                            <Leaf className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                            <span>
-                              +{currentItem?.co2SavedKg || 1.1} kg CO2 Saved
-                            </span>
+                        {isItemSpoiled ? (
+                          <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
+                            <div className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/70 border-2 border-rose-600 text-rose-950 dark:text-rose-100 font-black">
+                              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                              <span>UNFIT FOR CONSUMPTION</span>
+                            </div>
+                            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                              <Clock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                              <span>0 days left (Rotten / Expired)</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
-                            <DollarSign className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
-                            <span>
-                              ₹{currentItem?.financialSavings || 90} Saved
-                            </span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
+                            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
+                              <Leaf className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                              <span>
+                                +{currentItem?.co2SavedKg || 1.1} kg CO2 Saved
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+                              <DollarSign className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                              <span>
+                                ₹{currentItem?.financialSavings || 90} Saved
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                              <Clock className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
+                              <span>
+                                ~{currentItem?.estimatedDaysLeft || 3} days left
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
-                            <Clock className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
-                            <span>
-                              ~{currentItem?.estimatedDaysLeft || 3} days left
-                            </span>
-                          </div>
-                        </div>
+                        )}
 
-                        <div className="pt-2 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-slate-100/90 dark:bg-slate-800/80 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-700 leading-relaxed">
-                          <strong className="font-bold text-slate-950 dark:text-white">
-                            Climate-Tuned Storage Tip:{" "}
+                        <div
+                          className={`pt-2 text-xs font-semibold p-3.5 rounded-xl border-2 leading-relaxed ${
+                            isItemSpoiled
+                              ? "bg-rose-100/90 dark:bg-rose-950/70 border-rose-400 dark:border-rose-700 text-rose-950 dark:text-rose-100"
+                              : "bg-slate-100/90 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                          }`}
+                        >
+                          <strong
+                            className={`font-bold ${
+                              isItemSpoiled
+                                ? "text-rose-700 dark:text-rose-300"
+                                : "text-slate-950 dark:text-white"
+                            }`}
+                          >
+                            {isItemSpoiled
+                              ? "Storage Directive: "
+                              : "Climate-Tuned Storage Tip: "}
                           </strong>
-                          {currentTranslated?.storageTips ||
-                            currentItem?.storageTips}
+                          {isItemSpoiled
+                            ? "DO NOT STORE — Item is spoiled and will cross-contaminate surrounding food in the fridge or pantry."
+                            : currentTranslated?.storageTips ||
+                              currentItem?.storageTips}
                         </div>
                       </div>
 
-                      {/* Rescue Recipes dedicated to current item */}
-                      <div className="p-5 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
-                        <div className="flex items-center justify-between">
+                      {/* Rescue Recipes OR Safe Disposal Protocol */}
+                      {isItemSpoiled ? (
+                        <div className="p-5 rounded-3xl border-2 border-rose-600 bg-white dark:bg-slate-900 shadow-xl space-y-3.5">
                           <div className="flex items-center gap-2">
-                            <ChefHat className="w-4 h-4 text-sky-900 dark:text-sky-300" />
-                            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                              Individual Rescue Recipes for {currentTranslated?.itemName || currentItem?.itemName}
+                            <ShieldAlert className="w-5 h-5 text-rose-600" />
+                            <h3 className="font-bold text-sm text-rose-950 dark:text-rose-200">
+                              Safe Disposal & Waste Protocol (No Cooking Advised)
                             </h3>
                           </div>
-                          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            {(currentTranslated?.recipes || currentItem?.recipes || []).length} suggestions
-                          </span>
-                        </div>
 
-                        <div className="space-y-3">
-                          {(
-                            currentTranslated?.recipes ||
-                            currentItem?.recipes ||
-                            []
-                          ).map((recipe: any, i: number) => (
-                            <div
-                              key={i}
-                              className="p-3.5 rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-1.5"
-                            >
-                              <div className="flex items-center justify-between">
-                                <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                                  {recipe.title}
-                                </h4>
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200 flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-sky-800 dark:text-sky-300" />
-                                  {recipe.time}
-                                </span>
-                              </div>
+                          <div className="space-y-3">
+                            <div className="p-3.5 rounded-2xl border-2 border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/30 space-y-1">
+                              <h4 className="font-bold text-xs sm:text-sm text-rose-950 dark:text-rose-200 flex items-center gap-1.5">
+                                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                                Why Boiling or Cooking Does Not Make It Safe
+                              </h4>
                               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
-                                {recipe.instructions}
+                                Bacterial and fungal toxins (such as mycotoxins, aflatoxins, and staphylococcal enterotoxins) are heat-stable and cannot be eliminated by cooking, boiling, or baking. Ingesting cooked spoiled food can still cause toxic food poisoning.
                               </p>
                             </div>
-                          ))}
+
+                            <div className="p-3.5 rounded-2xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/30 space-y-1">
+                              <h4 className="font-bold text-xs sm:text-sm text-emerald-950 dark:text-emerald-300 flex items-center gap-1.5">
+                                <Leaf className="w-3.5 h-3.5 text-emerald-600" />
+                                Safe Eco-Friendly Composting
+                              </h4>
+                              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
+                                {currentItem.category === "Dairy" || currentItem.category === "Protein"
+                                  ? "Seal in an airtight container or municipal organic waste bin. Avoid open home compost piles to prevent attracting rodents."
+                                  : "Plant-based scraps and spoiled fruits/vegetables can be safely composted in outdoor bins to enrich garden soil."}
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="p-5 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <ChefHat className="w-4 h-4 text-sky-900 dark:text-sky-300" />
+                              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                                Individual Rescue Recipes for {currentTranslated?.itemName || currentItem?.itemName}
+                              </h3>
+                            </div>
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              {(currentTranslated?.recipes || currentItem?.recipes || []).length} suggestions
+                            </span>
+                          </div>
+
+                          <div className="space-y-3">
+                            {(
+                              currentTranslated?.recipes ||
+                              currentItem?.recipes ||
+                              []
+                            ).map((recipe: any, i: number) => (
+                              <div
+                                key={i}
+                                className="p-3.5 rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-1.5"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                                    {recipe.title}
+                                  </h4>
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200 flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-sky-800 dark:text-sky-300" />
+                                    {recipe.time}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
+                                  {recipe.instructions}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1277,16 +1449,26 @@ export default function DashboardFeaturePage() {
                 const urgency = getUrgencyConfig(
                   item.spoilageRisk,
                   item.estimatedDaysLeft,
+                  item.isConsumable,
+                  item.isStorable,
                 );
                 const itemName = translatedMap[item._id]?.name || item.name;
                 const itemTips =
                   translatedMap[item._id]?.storageTips || item.storageTips;
                 const itemImgSrc = item.cloudinaryUrl || item.badgedUrl || "";
+                const isItemSpoiled =
+                  urgency.isSpoiled ||
+                  item.spoilageRisk === "spoiled" ||
+                  item.isConsumable === false;
 
                 return (
                   <div
                     key={item._id}
-                    className="flex flex-col rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 overflow-hidden shadow-md hover:shadow-xl transition-all group"
+                    className={`flex flex-col rounded-3xl border-2 overflow-hidden shadow-md hover:shadow-xl transition-all group ${
+                      isItemSpoiled
+                        ? "border-rose-600 bg-rose-50/20 dark:bg-rose-950/20"
+                        : "border-slate-900 bg-white dark:bg-slate-900"
+                    }`}
                   >
                     {/* Thumbnail with fail-safe error handling and crisp DOM badge overlay */}
                     <div className="relative aspect-4/3 overflow-hidden border-b-2 border-slate-900 bg-slate-100">
@@ -1304,7 +1486,7 @@ export default function DashboardFeaturePage() {
                         }}
                       />
 
-                      {/* Urgency Badge (EAT FIRST / USE IN 2D / FRESH) */}
+                      {/* Urgency Badge (DO NOT CONSUME / EAT FIRST / USE IN 2D / FRESH) */}
                       <div className="absolute top-2.5 left-2.5 z-10">
                         <span
                           className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-sm ${urgency.color}`}
@@ -1333,9 +1515,15 @@ export default function DashboardFeaturePage() {
                           <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 font-bold text-slate-800 dark:text-slate-200">
                             {item.category}
                           </span>
-                          <span className="flex items-center gap-1 text-sky-900 dark:text-sky-300 font-bold">
+                          <span
+                            className={`flex items-center gap-1 font-bold ${
+                              isItemSpoiled
+                                ? "text-rose-600 dark:text-rose-400 font-black"
+                                : "text-sky-900 dark:text-sky-300"
+                            }`}
+                          >
                             <Clock className="w-3.5 h-3.5" />
-                            {item.estimatedDaysLeft}d left
+                            {isItemSpoiled ? "SPOILED" : `${item.estimatedDaysLeft}d left`}
                           </span>
                         </div>
 
@@ -1346,7 +1534,17 @@ export default function DashboardFeaturePage() {
                           {item.portionSize || "Standard portion"}
                         </p>
 
-                        {itemTips && (
+                        {isItemSpoiled && (
+                          <div className="mt-2 p-2 rounded-xl bg-rose-100 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 text-[11px] font-bold text-rose-900 dark:text-rose-200 flex items-start gap-1.5">
+                            <ShieldAlert className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                            <span>
+                              {item.healthHazardWarning ||
+                                "Unfit for consumption — Discard immediately."}
+                            </span>
+                          </div>
+                        )}
+
+                        {!isItemSpoiled && itemTips && (
                           <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-2 line-clamp-2 bg-slate-100/90 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 flex items-start gap-1.5">
                             <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                             <span>{itemTips}</span>
@@ -1357,27 +1555,40 @@ export default function DashboardFeaturePage() {
                       {/* Actions */}
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
                         {item.status === "in_fridge" && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleUpdateStatus(item._id, "consumed")
-                              }
-                              className="flex-1 py-1.5 px-2.5 rounded-xl border-2 border-emerald-700 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              I Rescued This
-                            </button>
+                          isItemSpoiled ? (
                             <button
                               type="button"
                               onClick={() =>
                                 handleUpdateStatus(item._id, "wasted")
                               }
-                              className="py-1.5 px-3 rounded-xl border-2 border-slate-400 hover:border-red-600 hover:bg-red-50 text-slate-700 hover:text-red-700 text-xs font-bold transition-colors"
+                              className="w-full py-2 px-3 rounded-xl border-2 border-rose-800 bg-rose-700 hover:bg-rose-800 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
                             >
-                              Discard
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Discard Spoiled Food Now
                             </button>
-                          </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateStatus(item._id, "consumed")
+                                }
+                                className="flex-1 py-1.5 px-2.5 rounded-xl border-2 border-emerald-700 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                I Rescued This
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateStatus(item._id, "wasted")
+                                }
+                                className="py-1.5 px-3 rounded-xl border-2 border-slate-400 hover:border-red-600 hover:bg-red-50 text-slate-700 hover:text-red-700 text-xs font-bold transition-colors"
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          )
                         )}
 
                         {item.status === "consumed" && (
