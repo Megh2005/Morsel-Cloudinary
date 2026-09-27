@@ -18,17 +18,16 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 
-// Dynamically import GoogleLocationPicker with custom Morsel palette and global places autocomplete
-const GoogleLocationPicker = dynamic(() => import("@/components/GoogleLocationPicker"), {
+const ProtomapsLocationPicker = dynamic(() => import("@/components/ProtomapsLocationPicker"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-90 rounded-2xl bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 animate-pulse text-center p-4">
       <Loader2 className="w-8 h-8 animate-spin text-sky-900 dark:text-sky-400 mb-2" />
       <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-        Loading Interactive Map...
+        Loading OpenStreetMap Engine...
       </p>
       <p className="text-xs text-slate-500 mt-1">
-        You will be able to search and pick your exact coordinates shortly.
+        Searching establishments and landmarks worldwide.
       </p>
     </div>
   ),
@@ -61,15 +60,8 @@ export default function FieldWatchPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // Geolocation State
-  const [selectedLocation, setSelectedLocation] = useState<LocationData>({
-    lat: 22.5697,
-    lng: 88.3697,
-    display_name: "Sealdah Wholesale Market, Bepin Behari Ganguly St, Bowbazar, Kolkata, West Bengal 700012",
-    city: "Kolkata",
-    state: "West Bengal",
-    country: "India",
-  });
+  // Geolocation State (starts unselected, Google HQ coordinates used as visual reference until user enters)
+  const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [locationSource, setLocationSource] = useState<string>("default");
 
@@ -212,15 +204,17 @@ export default function FieldWatchPage() {
       formData.append("phase", phase);
       formData.append("activityType", activityType);
 
-      // Coordinates & Location details
-      formData.append("lat", selectedLocation.lat.toString());
-      formData.append("lng", selectedLocation.lng.toString());
-      formData.append("display_name", selectedLocation.display_name || "");
-      formData.append("city", selectedLocation.city || "");
-      formData.append("state", selectedLocation.state || "");
-      formData.append("country", selectedLocation.country || "India");
-      formData.append("pincode", selectedLocation.pincode || "");
-      formData.append("locationSource", locationSource);
+      // Coordinates & Location details (defaults to Google HQ coordinates if user hasn't selected another)
+      const lat = selectedLocation?.lat ?? 37.422;
+      const lng = selectedLocation?.lng ?? -122.0841;
+      formData.append("lat", lat.toString());
+      formData.append("lng", lng.toString());
+      formData.append("display_name", selectedLocation?.display_name || "Googleplex Headquarters");
+      formData.append("city", selectedLocation?.city || "Mountain View");
+      formData.append("state", selectedLocation?.state || "California");
+      formData.append("country", selectedLocation?.country || "USA");
+      formData.append("pincode", selectedLocation?.pincode || "94043");
+      formData.append("locationSource", selectedLocation ? locationSource : "google_hq_reference");
 
       setSubmissionStep("2/3: Running Multimodal AI audit for meal counts and CO2 diversion...");
 
@@ -237,7 +231,7 @@ export default function FieldWatchPage() {
       setSubmissionStep("3/3: Stamping GPS coordinates & Cloudinary DAM audit context...");
 
       toast.success(
-        `Field evidence verified! Coordinates (${selectedLocation.lat.toFixed(4)}, ${selectedLocation.lng.toFixed(4)}) synced.`
+        `Field evidence verified! Coordinates (${lat.toFixed(4)}, ${lng.toFixed(4)}) synced.`
       );
 
       // Reset form & reload
@@ -566,22 +560,26 @@ export default function FieldWatchPage() {
               <div className="p-3.5 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="space-y-0.5 text-left">
                   <span className="text-[10px] font-black uppercase text-sky-800 dark:text-sky-300">
-                    Active Coordinates Stamp
+                    {selectedLocation ? "Locked Field Coordinates" : "Google HQ Coordinates (Reference)"}
                   </span>
                   <p className="text-xs font-bold text-slate-900 dark:text-white line-clamp-1">
-                    {selectedLocation.display_name || "Location pinned on map"}
+                    {selectedLocation
+                      ? selectedLocation.display_name || "Location pinned on map"
+                      : "Search any establishment, address, or click/drag the map to choose location"}
                   </p>
                 </div>
                 <div className="text-xs font-mono font-bold text-sky-950 dark:text-sky-200 bg-white dark:bg-slate-800 px-3 py-1 rounded-lg border border-sky-300 dark:border-sky-700 shrink-0 text-center">
-                  Lat: {selectedLocation.lat.toFixed(6)}°, Lng: {selectedLocation.lng.toFixed(6)}°
+                  {selectedLocation
+                    ? `Lat: ${selectedLocation.lat.toFixed(6)}°, Lng: ${selectedLocation.lng.toFixed(6)}°`
+                    : "Google HQ: 37.422000°, -122.084100°"}
                 </div>
               </div>
 
-              {/* Google Maps Location Picker Component with Places Autocomplete */}
+              {/* OpenStreetMap / Protomaps Location Picker Component with Establishment Autocomplete */}
               <div className="w-full rounded-2xl overflow-hidden border-2 border-slate-900 dark:border-slate-700 shadow-md">
-                <GoogleLocationPicker
+                <ProtomapsLocationPicker
                   onLocationSelect={handleMapLocationSelect}
-                  initialPosition={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                  initialPosition={selectedLocation ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : null}
                 />
               </div>
             </div>
@@ -1002,7 +1000,7 @@ export default function FieldWatchPage() {
             </div>
 
             <div className="w-full h-80 rounded-2xl overflow-hidden border-2 border-slate-900 dark:border-slate-700">
-              <GoogleLocationPicker
+              <ProtomapsLocationPicker
                 readOnly
                 initialPosition={{ lat: inspectLocation.lat, lng: inspectLocation.lng }}
                 onLocationSelect={() => {}}
