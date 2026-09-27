@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const res = await fetch(fetchUrl, {
-      headers: { "User-Agent": "Morsel-FieldWatch/1.0" },
+      headers: { "User-Agent": "Morsel-RescueBridge/1.0" },
       next: { revalidate: 3600 },
     });
 

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const nomUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&extratags=1`;
     const nomRes = await fetch(nomUrl, {
       headers: {
-        "User-Agent": "Morsel-FieldWatch/1.0 (contact@morsel.org)",
+        "User-Agent": "Morsel-RescueBridge/1.0 (contact@morsel.org)",
         Accept: "application/json",
       },
       next: { revalidate: 86400 },

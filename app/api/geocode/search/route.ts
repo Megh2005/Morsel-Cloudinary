@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
 
       const nomRes = await fetch(nomUrl, {
         headers: {
-          "User-Agent": "Morsel-FieldWatch/1.0 (contact@morsel.org)",
+          "User-Agent": "Morsel-RescueBridge/1.0 (contact@morsel.org)",
           Accept: "application/json",
         },
         next: { revalidate: 86400 },
