@@ -339,9 +339,9 @@ export default function AuthPage() {
 
   if (status === "authenticated") {
     return (
-      <div className="min-h-[calc(100dvh-5rem)] flex items-center justify-center px-4 pt-12 pb-28 sm:py-16">
+      <div className="flex min-h-screen items-center justify-center p-4">
         <BackgroundPattern />
-        <Card className="w-full max-w-md border border-slate-200 shadow-2xl rounded-2xl bg-white overflow-hidden relative">
+        <Card className="w-full max-w-100 border border-slate-200 shadow-2xl rounded-2xl bg-white overflow-hidden relative">
           {/* Professional Success Header */}
           <div className="h-16 bg-emerald-600 flex items-center justify-center px-6 border-b border-emerald-500">
             <div className="flex items-center gap-2">
@@ -395,10 +395,10 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-[calc(100dvh-5rem)] flex items-center justify-center px-4 pt-12 pb-28 sm:py-16">
+    <div className="flex min-h-screen items-center justify-center p-4">
       <BackgroundPattern />
-      <Tabs defaultValue="signin" className="w-full max-w-md mx-auto">
-        <TabsList className="grid w-full grid-cols-2 mb-4 bg-transparent gap-3 sm:gap-4">
+      <Tabs defaultValue="signin" className="w-100">
+        <TabsList className="grid w-full grid-cols-2 mb-4 bg-transparent gap-4">
           <TabsTrigger
             value="signin"
             className="rounded-lg border-2 border-slate-900 bg-white data-[state=active]:bg-sky-900 data-[state=active]:text-white hover:bg-slate-50 transition-all shadow-sm"
@@ -634,7 +634,7 @@ export default function AuthPage() {
                   </div>
 
                   {/* State and City beside each other */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label
                         htmlFor="signupState"
