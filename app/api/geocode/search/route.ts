@@ -7,13 +7,17 @@ export async function GET(request: NextRequest) {
   const lng = searchParams.get("lng") || searchParams.get("lon");
   const category = searchParams.get("category");
 
+  const cacheHeaders = {
+    "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+  };
+
   if (!q.trim() || q.trim().length < 2) {
-    return NextResponse.json({ success: true, results: [] });
+    return NextResponse.json({ success: true, results: [] }, { headers: cacheHeaders });
   }
 
   const items: any[] = [];
 
-  // Helper to calculate distance in km
+  // Distance calculator (Haversine formula)
   const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -42,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const photonRes = await fetch(photonUrl, {
       headers: { Accept: "application/json" },
-      next: { revalidate: 1800 },
+      next: { revalidate: 86400 },
     });
 
     if (photonRes.ok) {
@@ -115,7 +119,7 @@ export async function GET(request: NextRequest) {
           "User-Agent": "Morsel-FieldWatch/1.0 (contact@morsel.org)",
           Accept: "application/json",
         },
-        next: { revalidate: 1800 },
+        next: { revalidate: 86400 },
       });
 
       if (nomRes.ok) {
@@ -165,8 +169,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Sort by distance if available
+  // Sort by distance if coordinates available
   items.sort((a, b) => (a.distanceKm ?? 99999) - (b.distanceKm ?? 99999));
 
-  return NextResponse.json({ success: true, results: items });
+  return NextResponse.json({ success: true, results: items }, { headers: cacheHeaders });
 }
