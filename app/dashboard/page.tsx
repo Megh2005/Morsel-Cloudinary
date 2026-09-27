@@ -589,7 +589,10 @@ export default function DashboardFeaturePage() {
         <div className="flex flex-wrap items-center justify-center gap-2 p-1.5 rounded-2xl border-2 border-slate-900 bg-white/95 dark:bg-slate-900/90 shadow-md">
           <button
             type="button"
-            onClick={() => setActiveTab("scanner")}
+            onClick={() => {
+              setActiveTab("scanner");
+              router.replace("/dashboard?tab=scanner", { scroll: false });
+            }}
             className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all ${
               activeTab === "scanner"
                 ? "bg-sky-900 text-white shadow-sm"
@@ -602,7 +605,10 @@ export default function DashboardFeaturePage() {
 
           <button
             type="button"
-            onClick={() => setActiveTab("inventory")}
+            onClick={() => {
+              setActiveTab("inventory");
+              router.replace("/dashboard?tab=inventory", { scroll: false });
+            }}
             className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all ${
               activeTab === "inventory"
                 ? "bg-sky-900 text-white shadow-sm"
@@ -881,7 +887,10 @@ export default function DashboardFeaturePage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setActiveTab("inventory")}
+                    onClick={() => {
+                      setActiveTab("inventory");
+                      router.replace("/dashboard?tab=inventory", { scroll: false });
+                    }}
                     className="px-3.5 py-1.5 rounded-xl border-2 border-slate-900 bg-white font-bold text-xs text-slate-900 hover:bg-slate-100 transition-all shadow-xs flex items-center gap-1.5"
                   >
                     <Refrigerator className="w-3.5 h-3.5" />
@@ -1128,7 +1137,10 @@ export default function DashboardFeaturePage() {
               </p>
               <button
                 type="button"
-                onClick={() => setActiveTab("scanner")}
+                onClick={() => {
+                  setActiveTab("scanner");
+                  router.replace("/dashboard?tab=scanner", { scroll: false });
+                }}
                 className="inline-flex items-center gap-2 px-5 py-2 rounded-full border-2 border-slate-900 bg-sky-900 text-white font-bold text-xs hover:bg-sky-800 shadow-sm"
               >
                 <Camera className="w-4 h-4" />

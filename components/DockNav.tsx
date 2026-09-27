@@ -21,20 +21,29 @@ export default function DockNav() {
 
   const currentTab = searchParams?.get("tab") || "scanner";
 
-  const handleTabClick = (e: React.MouseEvent, tab: string) => {
-    if (status !== "authenticated") {
-      e.preventDefault();
-      router.push("/auth");
-      return;
-    }
-    if (pathname === "/dashboard") {
+  const handleItemClick = (
+    e: React.MouseEvent,
+    item: { href: string; dashboardTab?: string },
+  ) => {
+    // Only intercept when user is ALREADY on /dashboard AND clicking a dashboard-internal tab
+    if (item.dashboardTab && pathname === "/dashboard") {
+      if (status !== "authenticated") {
+        e.preventDefault();
+        router.push("/auth");
+        return;
+      }
       e.preventDefault();
       window.dispatchEvent(
-        new CustomEvent("morsel_switch_tab", { detail: { tab } })
+        new CustomEvent("morsel_switch_tab", {
+          detail: { tab: item.dashboardTab },
+        }),
       );
-      const newUrl = `/dashboard?tab=${tab}`;
-      window.history.pushState(null, "", newUrl);
+      router.replace(item.href, { scroll: false });
+      return;
     }
+
+    // For all other routes (Profile, Home, Auth, or navigating to Dashboard from another page):
+    // Do NOT preventDefault! Let standard Next.js page navigation occur smoothly.
   };
 
   const navItems = [
@@ -42,35 +51,32 @@ export default function DockNav() {
       name: "Home",
       icon: Home,
       href: "/",
-      tab: "home",
       show: true,
     },
     {
       name: "Scan Food",
       icon: Camera,
-      href: status === "authenticated" ? "/dashboard?tab=scanner" : "/auth",
-      tab: "scanner",
+      href: "/dashboard?tab=scanner",
+      dashboardTab: "scanner",
       show: true,
     },
     {
       name: "My Fridge",
       icon: Refrigerator,
-      href: status === "authenticated" ? "/dashboard?tab=inventory" : "/auth",
-      tab: "inventory",
+      href: "/dashboard?tab=inventory",
+      dashboardTab: "inventory",
       show: true,
     },
     {
       name: "Profile",
       icon: User,
       href: "/profile",
-      tab: "profile",
       show: status === "authenticated",
     },
     {
       name: "Sign In",
       icon: LogIn,
       href: "/auth",
-      tab: "auth",
       show: status === "unauthenticated",
     },
   ];
@@ -83,8 +89,8 @@ export default function DockNav() {
           const isActive =
             item.name === "Home"
               ? pathname === "/"
-              : pathname === "/dashboard"
-              ? currentTab === item.tab
+              : pathname === "/dashboard" && item.dashboardTab
+              ? currentTab === item.dashboardTab
               : pathname === item.href;
 
           return (
@@ -92,11 +98,7 @@ export default function DockNav() {
               <TooltipTrigger asChild>
                 <Link
                   href={item.href}
-                  onClick={(e) => {
-                    if (item.name !== "Home" && item.tab) {
-                      handleTabClick(e, item.tab);
-                    }
-                  }}
+                  onClick={(e) => handleItemClick(e, item)}
                 >
                   <DockItem item={item} isActive={isActive} isButton={false} />
                 </Link>
