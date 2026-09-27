@@ -1,13 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  useMap,
-  useMapEvents,
-} from "react-leaflet";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import {
@@ -41,16 +34,16 @@ export interface OpenStreetMapLocationPickerProps {
   height?: string;
 }
 
-// Default fallback coordinate (Google Headquarters) if geolocation is completely unavailable
-const DEFAULT_FALLBACK = { lat: 37.422, lng: -122.0841 };
+// Default fallback coordinate (India central)
+const DEFAULT_INDIA_COORDS = { lat: 19.076, lng: 72.8777 };
 
-// Bespoke Morsel Brand Marker Pin
+// Custom Morsel Brand Marker Pin created with Leaflet L.divIcon
 const createBrandPinIcon = () => {
   return L.divIcon({
     className: "morsel-brand-marker",
     html: `
       <div style="position: relative; transform: translate(-50%, -100%); cursor: pointer; display: flex; flex-direction: column; align-items: center;">
-        <!-- Pulsing Ground Radar -->
+        <!-- Pulsing Ground Radar Target -->
         <div style="
           position: absolute;
           bottom: -4px;
@@ -102,44 +95,6 @@ const createBrandPinIcon = () => {
   });
 };
 
-// Map click event subscriber
-const MapClickHandler = ({
-  onLocationPick,
-  readOnly,
-}: {
-  onLocationPick: (lat: number, lng: number) => void;
-  readOnly?: boolean;
-}) => {
-  useMapEvents({
-    click(e) {
-      if (!readOnly) {
-        onLocationPick(e.latlng.lat, e.latlng.lng);
-      }
-    },
-  });
-  return null;
-};
-
-// Smooth Pan & Zoom on selection or location detection
-const MapFlyTo = ({
-  coords,
-  zoom = 16,
-}: {
-  coords: { lat: number; lng: number } | null;
-  zoom?: number;
-}) => {
-  const map = useMap();
-  useEffect(() => {
-    if (coords) {
-      map.flyTo([coords.lat, coords.lng], zoom, {
-        duration: 1.4,
-        easeLinearity: 0.25,
-      });
-    }
-  }, [coords, zoom, map]);
-  return null;
-};
-
 interface SearchResultItem {
   id: string;
   name: string;
@@ -158,14 +113,13 @@ export default function OpenStreetMapLocationPicker({
   readOnly = false,
   height = "420px",
 }: OpenStreetMapLocationPickerProps) {
-  // User detected coordinates for proximity-biased search
+  // Coordinates & Address state
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(
     initialPosition || null
   );
   const [activePin, setActivePin] = useState<{ lat: number; lng: number } | null>(
     initialPosition || null
   );
-
   const [resolvedAddress, setResolvedAddress] = useState<string>("");
   const [resolvedEstablishment, setResolvedEstablishment] = useState<string>("");
   const [addressLoading, setAddressLoading] = useState<boolean>(false);
@@ -179,14 +133,17 @@ export default function OpenStreetMapLocationPicker({
   const [showDropdown, setShowDropdown] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<string>("");
 
+  // DOM & Leaflet Refs (Kept outside render loop to prevent re-creation and vibration)
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerInstanceRef = useRef<L.Marker | null>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const rootContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Close dropdown on outside click
+  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (rootContainerRef.current && !rootContainerRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
     };
@@ -202,9 +159,7 @@ export default function OpenStreetMapLocationPicker({
       setAddressLoading(true);
       try {
         const response = await fetch(`/api/geocode/reverse?lat=${lat}&lng=${lng}`);
-        if (!response.ok) {
-          throw new Error("Geocode API error");
-        }
+        if (!response.ok) throw new Error("Geocode API error");
 
         const data = await response.json();
 
@@ -252,78 +207,137 @@ export default function OpenStreetMapLocationPicker({
     [onLocationSelect]
   );
 
+  // Position Leaflet Marker without re-creating map
+  const setMarkerOnMap = useCallback(
+    (lat: number, lng: number, pan = true) => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      if (!markerInstanceRef.current) {
+        const marker = L.marker([lat, lng], {
+          draggable: !readOnly,
+          icon: createBrandPinIcon(),
+        }).addTo(map);
+
+        if (!readOnly) {
+          marker.on("dragend", () => {
+            const pos = marker.getLatLng();
+            setActivePin({ lat: pos.lat, lng: pos.lng });
+            reverseGeocode(pos.lat, pos.lng);
+          });
+        }
+
+        markerInstanceRef.current = marker;
+      } else {
+        markerInstanceRef.current.setLatLng([lat, lng]);
+      }
+
+      if (pan) {
+        map.flyTo([lat, lng], Math.max(map.getZoom(), 16), {
+          duration: 1.2,
+          easeLinearity: 0.25,
+        });
+      }
+    },
+    [readOnly, reverseGeocode]
+  );
+
   // Handle location pick via click or drag
   const handleLocationPick = useCallback(
-    (lat: number, lng: number) => {
+    (lat: number, lng: number, pan = true) => {
       setActivePin({ lat, lng });
+      setMarkerOnMap(lat, lng, pan);
       reverseGeocode(lat, lng);
     },
-    [reverseGeocode]
+    [setMarkerOnMap, reverseGeocode]
   );
 
-  // Automatically track user location & country on mount
+  // Initialize Map exactly ONCE on mount (prevents map vibration and re-render loops)
   useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const startCoords = initialPosition || DEFAULT_INDIA_COORDS;
+
+    // Create Leaflet Map instance
+    const map = L.map(mapContainerRef.current, {
+      center: [startCoords.lat, startCoords.lng],
+      zoom: initialPosition ? 16 : 13,
+      zoomControl: true,
+      attributionControl: true,
+      fadeAnimation: false, // Prevents tile vibration
+    });
+
+    // Add standard OpenStreetMap tiles
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    mapInstanceRef.current = map;
+
+    // Attach click listener
+    if (!readOnly) {
+      map.on("click", (e: L.LeafletMouseEvent) => {
+        handleLocationPick(e.latlng.lat, e.latlng.lng, false);
+      });
+    }
+
+    // ResizeObserver ensures smooth, vibration-free layout resizing
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    });
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
+    // Auto-detect user's location & country
     if (initialPosition) {
-      setActivePin(initialPosition);
-      setUserCoords(initialPosition);
+      setMarkerOnMap(initialPosition.lat, initialPosition.lng, false);
       reverseGeocode(initialPosition.lat, initialPosition.lng);
-      return;
-    }
-
-    setDetectingLocation(true);
-
-    // 1. Try Browser GPS first
-    if (typeof window !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const coords = { lat, lng };
-          setUserCoords(coords);
-          setActivePin(coords);
-          setDetectingLocation(false);
-          reverseGeocode(lat, lng);
-        },
-        async () => {
-          // 2. Fallback to IP geolocation if GPS is denied or unavailable
-          try {
-            const res = await fetch("https://ipwho.is/");
-            const data = await res.json();
-            if (data && data.success && data.latitude && data.longitude) {
-              const coords = { lat: data.latitude, lng: data.longitude };
-              setUserCoords(coords);
-              setActivePin(coords);
-              if (data.country) setDetectedCountry(data.country);
-              reverseGeocode(coords.lat, coords.lng);
-            } else {
-              setUserCoords(DEFAULT_FALLBACK);
-            }
-          } catch {
-            setUserCoords(DEFAULT_FALLBACK);
-          } finally {
-            setDetectingLocation(false);
-          }
-        },
-        { timeout: 7000, enableHighAccuracy: true }
-      );
     } else {
-      setUserCoords(DEFAULT_FALLBACK);
-      setDetectingLocation(false);
-    }
-  }, [initialPosition, reverseGeocode]);
+      setDetectingLocation(true);
 
-  const markerEventHandlers = useMemo(
-    () => ({
-      dragend() {
-        const marker = markerRef.current;
-        if (marker != null) {
-          const { lat, lng } = marker.getLatLng();
-          handleLocationPick(lat, lng);
-        }
-      },
-    }),
-    [handleLocationPick]
-  );
+      // Phase 1: Fast IP Geolocation (Jio and Indian ISP compatible)
+      fetch("/api/geocode/ip")
+        .then((res) => res.json())
+        .then((ipData) => {
+          if (ipData && ipData.success && ipData.lat && ipData.lng) {
+            setUserCoords({ lat: ipData.lat, lng: ipData.lng });
+            if (ipData.country) setDetectedCountry(ipData.country);
+
+            // Center map on user's region
+            map.setView([ipData.lat, ipData.lng], 14);
+            handleLocationPick(ipData.lat, ipData.lng, false);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setDetectingLocation(false);
+        });
+
+      // Phase 2: Refine with Leaflet GPS if permitted
+      map.locate({ maxZoom: 16, enableHighAccuracy: true });
+
+      map.on("locationfound", (e: L.LocationEvent) => {
+        setDetectingLocation(false);
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+        setUserCoords({ lat, lng });
+        handleLocationPick(lat, lng, true);
+      });
+    }
+
+    // Clean up on component unmount
+    return () => {
+      resizeObserver.disconnect();
+      map.remove();
+      mapInstanceRef.current = null;
+      markerInstanceRef.current = null;
+    };
+  }, []); // Run once on mount!
 
   // Proximity-Biased Establishment Search via internal server proxy
   const performSearch = async (query: string, filterCategory?: string) => {
@@ -336,7 +350,7 @@ export default function OpenStreetMapLocationPicker({
 
     setIsSearching(true);
     try {
-      const biasCoords = userCoords || activePin || DEFAULT_FALLBACK;
+      const biasCoords = userCoords || activePin || DEFAULT_INDIA_COORDS;
       let url = `/api/geocode/search?q=${encodeURIComponent(trimmed)}`;
       if (biasCoords) {
         url += `&lat=${biasCoords.lat}&lng=${biasCoords.lng}`;
@@ -383,7 +397,7 @@ export default function OpenStreetMapLocationPicker({
   };
 
   const handleSelectResult = (item: SearchResultItem) => {
-    setActivePin({ lat: item.lat, lng: item.lng });
+    handleLocationPick(item.lat, item.lng, true);
     setSearchQuery(item.name);
     setShowDropdown(false);
 
@@ -410,8 +424,6 @@ export default function OpenStreetMapLocationPicker({
           establishment,
         },
       });
-    } else {
-      reverseGeocode(item.lat, item.lng);
     }
   };
 
@@ -422,27 +434,12 @@ export default function OpenStreetMapLocationPicker({
     performSearch(term, filterKey);
   };
 
+  // Track Current Location using Leaflet map.locate
   const handleLocateMe = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      return;
-    }
+    const map = mapInstanceRef.current;
+    if (!map) return;
     setDetectingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const coords = { lat, lng };
-        setUserCoords(coords);
-        handleLocationPick(lat, lng);
-        setDetectingLocation(false);
-      },
-      (err) => {
-        console.warn("Geolocation error:", err);
-        setDetectingLocation(false);
-      },
-      { timeout: 10000, enableHighAccuracy: true }
-    );
+    map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
   };
 
   const getCategoryIcon = (category: SearchResultItem["category"]) => {
@@ -460,13 +457,11 @@ export default function OpenStreetMapLocationPicker({
     }
   };
 
-  const pinIcon = useMemo(() => createBrandPinIcon(), []);
-
   return (
     <div
-      ref={containerRef}
+      ref={rootContainerRef}
       className="relative w-full rounded-2xl overflow-hidden border-2 border-slate-900 dark:border-slate-700 shadow-md bg-slate-100 dark:bg-slate-950 font-sans"
-      style={{ height }}
+      style={{ height, minHeight: height }}
     >
       {/* Top Search Bar & Proximity Filters */}
       {!readOnly && (
@@ -505,11 +500,11 @@ export default function OpenStreetMapLocationPicker({
               </button>
             ) : null}
 
-            {/* GPS Locate Me Button */}
+            {/* GPS Locate Me Button using Leaflet locate */}
             <button
               type="button"
               onClick={handleLocateMe}
-              title="Track Current Device Location"
+              title="Track Current Device Location via Leaflet"
               className="px-2.5 py-1.5 mr-2 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/60 text-sky-900 dark:text-sky-200 text-[10px] font-bold border border-sky-300 dark:border-sky-800 flex items-center gap-1 shrink-0 transition-colors"
             >
               {detectingLocation ? (
@@ -626,37 +621,20 @@ export default function OpenStreetMapLocationPicker({
         </div>
       )}
 
-      {/* Direct OpenStreetMap Map Container */}
-      <MapContainer
-        center={[
-          userCoords?.lat || activePin?.lat || DEFAULT_FALLBACK.lat,
-          userCoords?.lng || activePin?.lng || DEFAULT_FALLBACK.lng,
-        ]}
-        zoom={activePin ? 16 : 14}
-        className="w-full h-full"
-        style={{ height: "100%", width: "100%" }}
-      >
-        {/* OpenStreetMap Tile Layer - Direct, zero API key required */}
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={19}
-        />
-
-        {/* Brand Marker Pin */}
-        {activePin && (
-          <Marker
-            position={[activePin.lat, activePin.lng]}
-            draggable={!readOnly}
-            ref={markerRef}
-            eventHandlers={markerEventHandlers}
-            icon={pinIcon}
-          />
-        )}
-
-        <MapClickHandler onLocationPick={handleLocationPick} readOnly={readOnly} />
-        {activePin && <MapFlyTo coords={activePin} zoom={16} />}
-      </MapContainer>
+      {/* Vibration-Free Leaflet Map DOM Element */}
+      <div
+        ref={mapContainerRef}
+        style={{
+          width: "100%",
+          height: "100%",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1,
+        }}
+      />
 
       {/* Bottom Status Bar */}
       <div className="absolute bottom-2 left-2 right-2 bg-slate-950/85 backdrop-blur-md text-white px-3 py-2 rounded-xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] font-mono shadow-xl z-900 pointer-events-none">
