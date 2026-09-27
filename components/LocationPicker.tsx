@@ -1,2 +1,2 @@
-export { default } from "./ProtomapsLocationPicker";
-export * from "./ProtomapsLocationPicker";
+export { default } from "./OpenStreetMapLocationPicker";
+export * from "./OpenStreetMapLocationPicker";

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 
-const ProtomapsLocationPicker = dynamic(() => import("@/components/ProtomapsLocationPicker"), {
+const OpenStreetMapLocationPicker = dynamic(() => import("@/components/OpenStreetMapLocationPicker"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-90 rounded-2xl bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 animate-pulse text-center p-4">
@@ -575,9 +575,9 @@ export default function FieldWatchPage() {
                 </div>
               </div>
 
-              {/* OpenStreetMap / Protomaps Location Picker Component with Establishment Autocomplete */}
+              {/* Direct OpenStreetMap Location Picker Component with Nearby Establishment Search */}
               <div className="w-full rounded-2xl overflow-hidden border-2 border-slate-900 dark:border-slate-700 shadow-md">
-                <ProtomapsLocationPicker
+                <OpenStreetMapLocationPicker
                   onLocationSelect={handleMapLocationSelect}
                   initialPosition={selectedLocation ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : null}
                 />
@@ -1000,7 +1000,7 @@ export default function FieldWatchPage() {
             </div>
 
             <div className="w-full h-80 rounded-2xl overflow-hidden border-2 border-slate-900 dark:border-slate-700">
-              <ProtomapsLocationPicker
+              <OpenStreetMapLocationPicker
                 readOnly
                 initialPosition={{ lat: inspectLocation.lat, lng: inspectLocation.lng }}
                 onLocationSelect={() => {}}
