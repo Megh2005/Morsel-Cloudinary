@@ -9,6 +9,7 @@ import {
   LogOut,
   Refrigerator,
   User,
+  HeartHandshake,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -73,9 +74,9 @@ export default function DockNav() {
       show: true,
     },
     {
-      name: "FieldWatch",
-      icon: Globe,
-      href: "/fieldwatch",
+      name: "Food Rescue",
+      icon: HeartHandshake,
+      href: "/rescue",
       show: true,
     },
     {
