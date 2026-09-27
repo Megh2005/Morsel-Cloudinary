@@ -21,6 +21,7 @@ import {
   Search,
   Upload,
   RotateCcw,
+  MapPin,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { translateBatch } from "@/lib/translateHelper";
@@ -73,6 +74,7 @@ export default function DashboardFeaturePage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [scanResult, setScanResult] = useState<any>(null);
+  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
 
   // Real-time Camera Capture state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -199,26 +201,33 @@ export default function DashboardFeaturePage() {
   };
 
   const translateScanResult = async (resData: any, lang: string) => {
-    if (lang === "en" || !resData?.analysis) {
+    const items =
+      resData?.detectedItems && resData.detectedItems.length > 0
+        ? resData.detectedItems
+        : resData?.analysis
+          ? [resData.analysis]
+          : [];
+
+    if (lang === "en" || items.length === 0) {
       setTranslatedScanResult(null);
       return;
     }
     try {
-      const an = resData.analysis;
-      const texts = [
-        an.itemName || "",
-        an.portionSize || "",
-        an.spoilageNotes || "",
-        an.storageTips || "",
-      ];
-      (an.recipes || []).forEach((r: any) => {
-        texts.push(r.title || "");
-        texts.push(r.instructions || "");
+      const texts: string[] = [];
+      items.forEach((an: any) => {
+        texts.push(an.itemName || "");
+        texts.push(an.portionSize || "");
+        texts.push(an.spoilageNotes || "");
+        texts.push(an.storageTips || "");
+        (an.recipes || []).forEach((r: any) => {
+          texts.push(r.title || "");
+          texts.push(r.instructions || "");
+        });
       });
 
       const trans = await translateBatch(texts, lang);
       let idx = 0;
-      setTranslatedScanResult({
+      const translatedItems = items.map((an: any) => ({
         itemName: trans[idx++],
         portionSize: trans[idx++],
         spoilageNotes: trans[idx++],
@@ -228,6 +237,11 @@ export default function DashboardFeaturePage() {
           title: trans[idx++],
           instructions: trans[idx++],
         })),
+      }));
+
+      setTranslatedScanResult({
+        translatedItems,
+        ...(translatedItems[0] || {}),
       });
     } catch (e) {
       console.warn("Scan translation notice:", e);
@@ -243,6 +257,7 @@ export default function DashboardFeaturePage() {
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setScanResult(null);
+    setSelectedItemIndex(0);
     setTranslatedScanResult(null);
   };
 
@@ -383,6 +398,7 @@ export default function DashboardFeaturePage() {
 
     setAnalyzing(true);
     setScanResult(null);
+    setSelectedItemIndex(0);
     setAnalysisStep(1);
 
     const step2Timer = setTimeout(() => setAnalysisStep(2), 1200);
@@ -409,8 +425,14 @@ export default function DashboardFeaturePage() {
       }
 
       const data = await response.json();
+      setSelectedItemIndex(0);
       setScanResult(data);
-      toast.success("Food scanned and saved to your fridge inventory!");
+      const itemsCount = data.detectedItems?.length || 1;
+      toast.success(
+        itemsCount > 1
+          ? `Recognized all ${itemsCount} food items! Saved to your smart fridge.`
+          : "Food scanned and saved to your fridge inventory!",
+      );
 
       refreshData();
 
@@ -745,10 +767,9 @@ export default function DashboardFeaturePage() {
                     {analyzing ? (
                       <div className="p-6 rounded-2xl border-2 border-slate-900 bg-sky-50 dark:bg-slate-800 text-left space-y-3">
                         <div className="flex items-center gap-3">
-                          <RefreshCw className="w-5 h-5 text-sky-900 animate-spin" />
+                          <RefreshCw className="w-5 h-5 text-sky-900 dark:text-sky-300 animate-spin" />
                           <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                            Analyzing with Cloudinary AI & Gemini Multimodal
-                            Pipeline...
+                            Multi-Item Culinary Analysis & Regional Freshness Assessment...
                           </h3>
                         </div>
 
@@ -760,8 +781,7 @@ export default function DashboardFeaturePage() {
                               <div className="w-4 h-4 rounded-full border-2 border-slate-400" />
                             )}
                             <span>
-                              1. Cloudinary upload & lighting enhancement (
-                              <code>improve:outdoor</code>)
+                              1. High-resolution visual preprocessing and lighting optimization
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -771,8 +791,7 @@ export default function DashboardFeaturePage() {
                               <div className="w-4 h-4 rounded-full border-2 border-slate-400" />
                             )}
                             <span>
-                              2. Cloudinary color palette analysis & subject
-                              framing
+                              2. Multi-item recognition, framing, and color palette extraction
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -782,8 +801,7 @@ export default function DashboardFeaturePage() {
                               <div className="w-4 h-4 rounded-full border-2 border-slate-400" />
                             )}
                             <span>
-                              3. Gemini AI Multimodal spoilage prediction &
-                              shelf-life calculation
+                              3. Deep freshness diagnosis, spoilage prediction & regional climate adjustment
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -793,8 +811,7 @@ export default function DashboardFeaturePage() {
                               <div className="w-4 h-4 rounded-full border-2 border-slate-400" />
                             )}
                             <span>
-                              4. Generating dynamic urgency badges & rescue
-                              recipes
+                              4. Generating individual rescue recipes with local pantry staples
                             </span>
                           </div>
                         </div>
@@ -875,184 +892,291 @@ export default function DashboardFeaturePage() {
               </div>
             </div>
           ) : (
-            /* Scanned Result View */
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl border-2 border-slate-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200">
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span className="font-bold text-xs sm:text-sm">
-                    Item Saved to Your Smart Fridge Inventory!
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab("inventory");
-                      router.replace("/dashboard?tab=inventory", { scroll: false });
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl border-2 border-slate-900 bg-white font-bold text-xs text-slate-900 hover:bg-slate-100 transition-all shadow-xs flex items-center gap-1.5"
-                  >
-                    <Refrigerator className="w-3.5 h-3.5" />
-                    View in Fridge
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFile(null);
-                      setPreviewUrl(null);
-                      setScanResult(null);
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl border-2 border-slate-900 bg-sky-900 font-bold text-xs text-white hover:bg-sky-800 transition-all shadow-xs"
-                  >
-                    Scan Another
-                  </button>
-                </div>
-              </div>
+            (() => {
+              const detectedItems: any[] =
+                scanResult.detectedItems && scanResult.detectedItems.length > 0
+                  ? scanResult.detectedItems
+                  : scanResult.analysis
+                    ? [scanResult.analysis]
+                    : [];
+              const currentItem =
+                detectedItems[selectedItemIndex] ||
+                detectedItems[0] ||
+                scanResult.analysis ||
+                {};
+              const currentTranslated = translatedScanResult?.translatedItems
+                ? translatedScanResult.translatedItems[selectedItemIndex]
+                : translatedScanResult;
+              const currentUrgency = getUrgencyConfig(
+                currentItem?.spoilageRisk,
+                currentItem?.estimatedDaysLeft,
+              );
 
-              {/* Result Details Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Image card with guaranteed rendering and crisp DOM badge overlay */}
-                <div className="lg:col-span-5 space-y-4">
-                  <div className="p-4 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl">
-                    <div className="relative rounded-2xl overflow-hidden border-2 border-slate-900 aspect-square bg-slate-100">
-                      <img
-                        src={
-                          scanResult.cloudinary?.originalUrl ||
-                          scanResult.item?.cloudinaryUrl ||
-                          scanResult.cloudinary?.badgedUrl ||
-                          previewUrl ||
-                          ""
-                        }
-                        alt={scanResult.analysis?.itemName || "Scanned food"}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          if (
-                            previewUrl &&
-                            e.currentTarget.src !== previewUrl
-                          ) {
-                            e.currentTarget.src = previewUrl;
-                          }
-                        }}
-                      />
-                      {/* Crisp DOM Badge overlay that ALWAYS renders 100% reliably */}
-                      {(() => {
-                        const urg = getUrgencyConfig(
-                          scanResult.analysis?.spoilageRisk,
-                          scanResult.analysis?.estimatedDaysLeft,
-                        );
-                        return (
-                          <div
-                            className={`absolute top-3 left-3 px-3 py-1 rounded-lg text-xs font-black tracking-wider uppercase border-2 shadow-lg ${urg.color}`}
-                          >
-                            {urg.badge}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Dominant Colors */}
-                    {scanResult.cloudinary?.dominantColors?.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">
-                          <Palette className="w-3.5 h-3.5" />
-                          <span>Extracted Color Palette</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {scanResult.cloudinary.dominantColors.map(
-                            (color: string, i: number) => (
-                              <div
-                                key={i}
-                                className="w-6 h-6 rounded-md border-2 border-slate-900"
-                                style={{ backgroundColor: color }}
-                                title={color}
-                              />
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Intelligence details & recipes */}
-                <div className="lg:col-span-7 space-y-4">
-                  <div className="p-5 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-900 border border-sky-300">
-                        {scanResult.analysis?.category}
-                      </span>
-                      <span className="text-xs text-slate-800 dark:text-slate-200 font-bold">
-                        {translatedScanResult?.portionSize ||
-                          scanResult.analysis?.portionSize}
+              return (
+                <div className="space-y-6">
+                  {/* Top Notification Bar */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl border-2 border-slate-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200">
+                    <div className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <span className="font-bold text-xs sm:text-sm">
+                        {detectedItems.length > 1
+                          ? `All ${detectedItems.length} Food Items Recognized & Saved to Your Smart Fridge!`
+                          : "Item Saved to Your Smart Fridge Inventory!"}
                       </span>
                     </div>
-
-                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-                      {translatedScanResult?.itemName ||
-                        scanResult.analysis?.itemName}
-                    </h2>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
-                      <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900">
-                        <Leaf className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>
-                          +{scanResult.analysis?.co2SavedKg} kg CO2 Saved
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 text-amber-900">
-                        <DollarSign className="w-3.5 h-3.5 text-amber-700" />
-                        <span>
-                          ₹{scanResult.analysis?.financialSavings || 100} saved
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-slate-100/90 dark:bg-slate-800/80 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-700 leading-relaxed">
-                      <strong className="font-bold text-slate-950 dark:text-white">Storage Tip: </strong>
-                      {translatedScanResult?.storageTips ||
-                        scanResult.analysis?.storageTips}
-                    </div>
-                  </div>
-
-                  {/* Rescue Recipes */}
-                  <div className="p-5 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
                     <div className="flex items-center gap-2">
-                      <ChefHat className="w-4 h-4 text-sky-900" />
-                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                        Instant Leftover Rescue Recipes
-                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("inventory");
+                          router.replace("/dashboard?tab=inventory", {
+                            scroll: false,
+                          });
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl border-2 border-slate-900 bg-white dark:bg-slate-800 font-bold text-xs text-slate-900 dark:text-white hover:bg-slate-100 transition-all shadow-xs flex items-center gap-1.5"
+                      >
+                        <Refrigerator className="w-3.5 h-3.5" />
+                        View in Fridge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFile(null);
+                          setPreviewUrl(null);
+                          setScanResult(null);
+                          setSelectedItemIndex(0);
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl border-2 border-slate-900 bg-sky-900 font-bold text-xs text-white hover:bg-sky-800 transition-all shadow-xs"
+                      >
+                        Scan Another
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Multi-Item Recognition Navigation Bar */}
+                  {detectedItems.length > 1 && (
+                    <div className="p-4 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-md space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black uppercase tracking-wider text-sky-900 dark:text-sky-300">
+                            {detectedItems.length} Food Items Identified
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            (Select an item to view its individual freshness diagnosis & rescue recipes)
+                          </span>
+                        </div>
+                        {scanResult.locationContext && (
+                          <div className="flex items-center gap-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                            <MapPin className="w-3 h-3 text-sky-700 dark:text-sky-400" />
+                            <span>Location: {scanResult.locationContext}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-1 scrollbar-none">
+                        {detectedItems.map((item: any, idx: number) => {
+                          const isSelected = idx === selectedItemIndex;
+                          const urg = getUrgencyConfig(
+                            item.spoilageRisk,
+                            item.estimatedDaysLeft,
+                          );
+                          const displayName =
+                            translatedScanResult?.translatedItems?.[idx]?.itemName ||
+                            item.itemName;
+
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setSelectedItemIndex(idx)}
+                              className={`px-3.5 py-2 rounded-2xl border-2 font-bold text-xs flex items-center gap-2 transition-all whitespace-nowrap shrink-0 ${
+                                isSelected
+                                  ? "border-slate-900 bg-sky-900 text-white shadow-md scale-[1.02]"
+                                  : "border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              }`}
+                            >
+                              <span>{displayName}</span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase border ${urg.color}`}
+                              >
+                                {urg.badge}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Result Details Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left Column: Image card and visual diagnosis */}
+                    <div className="lg:col-span-5 space-y-4">
+                      <div className="p-4 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
+                        <div className="relative rounded-2xl overflow-hidden border-2 border-slate-900 aspect-square bg-slate-100">
+                          <img
+                            src={
+                              scanResult.cloudinary?.originalUrl ||
+                              scanResult.item?.cloudinaryUrl ||
+                              scanResult.cloudinary?.badgedUrl ||
+                              previewUrl ||
+                              ""
+                            }
+                            alt={currentItem?.itemName || "Scanned food"}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              if (
+                                previewUrl &&
+                                e.currentTarget.src !== previewUrl
+                              ) {
+                                e.currentTarget.src = previewUrl;
+                              }
+                            }}
+                          />
+                          {/* Crisp DOM Badge overlay tuned to active item */}
+                          <div
+                            className={`absolute top-3 left-3 px-3 py-1 rounded-lg text-xs font-black tracking-wider uppercase border-2 shadow-lg ${currentUrgency.color}`}
+                          >
+                            {currentUrgency.badge}
+                          </div>
+                        </div>
+
+                        {/* Freshness Assessment Notes */}
+                        {currentItem?.spoilageNotes && (
+                          <div className="p-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 text-xs font-semibold text-slate-900 dark:text-slate-100 leading-relaxed">
+                            <strong className="font-bold text-amber-950 dark:text-amber-200">
+                              Visual Freshness Assessment:{" "}
+                            </strong>
+                            {currentTranslated?.spoilageNotes ||
+                              currentItem.spoilageNotes}
+                          </div>
+                        )}
+
+                        {/* Extracted Color Palette */}
+                        {scanResult.cloudinary?.dominantColors?.length > 0 && (
+                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">
+                              <Palette className="w-3.5 h-3.5" />
+                              <span>Extracted Visual Color Palette</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {scanResult.cloudinary.dominantColors.map(
+                                (color: string, i: number) => (
+                                  <div
+                                    key={i}
+                                    className="w-6 h-6 rounded-md border-2 border-slate-900"
+                                    style={{ backgroundColor: color }}
+                                    title={color}
+                                  />
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
-                      {(
-                        translatedScanResult?.recipes ||
-                        scanResult.analysis?.recipes ||
-                        []
-                      ).map((recipe: any, i: number) => (
-                        <div
-                          key={i}
-                          className="p-3.5 rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-1.5"
-                        >
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                              {recipe.title}
-                            </h4>
-                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-900 flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-sky-800" />
-                              {recipe.time}
+                    {/* Right Column: Intelligence details, location tuning & recipes */}
+                    <div className="lg:col-span-7 space-y-4">
+                      <div className="p-5 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200 border border-sky-300 dark:border-sky-800">
+                              {currentItem?.category || "Produce"}
+                            </span>
+                            <span className="text-xs text-slate-800 dark:text-slate-200 font-bold">
+                              {currentTranslated?.portionSize ||
+                                currentItem?.portionSize}
                             </span>
                           </div>
-                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
-                            {recipe.instructions}
-                          </p>
+
+                          {scanResult.locationContext && (
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-sky-900 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 rounded-md border border-sky-200 dark:border-sky-800">
+                              <MapPin className="w-3 h-3 text-sky-700 dark:text-sky-400 shrink-0" />
+                              <span>Tuned for {scanResult.locationContext}</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
+
+                        <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+                          {currentTranslated?.itemName || currentItem?.itemName}
+                        </h2>
+
+                        <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
+                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
+                            <Leaf className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                            <span>
+                              +{currentItem?.co2SavedKg || 1.1} kg CO2 Saved
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+                            <DollarSign className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                            <span>
+                              ₹{currentItem?.financialSavings || 90} Saved
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                            <Clock className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
+                            <span>
+                              ~{currentItem?.estimatedDaysLeft || 3} days left
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-slate-100/90 dark:bg-slate-800/80 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-700 leading-relaxed">
+                          <strong className="font-bold text-slate-950 dark:text-white">
+                            Climate-Tuned Storage Tip:{" "}
+                          </strong>
+                          {currentTranslated?.storageTips ||
+                            currentItem?.storageTips}
+                        </div>
+                      </div>
+
+                      {/* Rescue Recipes dedicated to current item */}
+                      <div className="p-5 rounded-3xl border-2 border-slate-900 bg-white dark:bg-slate-900 shadow-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ChefHat className="w-4 h-4 text-sky-900 dark:text-sky-300" />
+                            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                              Individual Rescue Recipes for {currentTranslated?.itemName || currentItem?.itemName}
+                            </h3>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            {(currentTranslated?.recipes || currentItem?.recipes || []).length} suggestions
+                          </span>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(
+                            currentTranslated?.recipes ||
+                            currentItem?.recipes ||
+                            []
+                          ).map((recipe: any, i: number) => (
+                            <div
+                              key={i}
+                              className="p-3.5 rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                                  {recipe.title}
+                                </h4>
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-sky-800 dark:text-sky-300" />
+                                  {recipe.time}
+                                </span>
+                              </div>
+                              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
+                                {recipe.instructions}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()
           )}
         </div>
       )}

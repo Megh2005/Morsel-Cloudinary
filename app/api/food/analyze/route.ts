@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/db";
 import FoodItem from "@/models/FoodItem";
+import User from "@/models/User";
 
 // Configure Cloudinary
 cloudinary.config({
@@ -23,6 +24,26 @@ export async function POST(req: NextRequest) {
       );
     }
     const userId = session.user.id || (session.user as any)._id || (session.user as any).email;
+
+    // Connect to database and retrieve user location (Country, State, City)
+    await connectToDatabase();
+    let userLocation = {
+      country: "India",
+      state: "West Bengal",
+      city: "Kolkata",
+    };
+    try {
+      const userDoc = await User.findOne({
+        $or: [{ _id: userId }, { email: session.user.email }],
+      });
+      if (userDoc) {
+        if (userDoc.country) userLocation.country = userDoc.country;
+        if (userDoc.state) userLocation.state = userDoc.state;
+        if (userDoc.city) userLocation.city = userDoc.city;
+      }
+    } catch (locErr) {
+      console.warn("User location retrieval notice:", locErr);
+    }
 
     const formData = await req.formData();
     const file = formData.get("file") as File;
@@ -79,39 +100,58 @@ export async function POST(req: NextRequest) {
     }
 
     const prompt = `
-You are Morsel AI, an advanced food waste prevention and culinary intelligence system.
-Analyze this food image carefully. It may contain leftovers, fresh produce, dairy, bakery items, or packaged groceries.
+You are Morsel AI, a world-class culinary intelligence and precision food waste prevention engine.
+Analyze this food image with extreme visual scrutiny.
 
-Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks, no explanations) matching this schema:
+MANDATORY INSTRUCTIONS:
+1. MULTI-ITEM RECOGNITION: The image may contain a single food item OR MULTIPLE DIFFERENT FOOD ITEMS (e.g. an entire refrigerator shelf, a vegetable crisper/basket, countertop groceries, multiple distinct leftovers, or a dinner spread). You MUST identify, recognize, and separate EVERY SINGLE FOOD ITEM visible in the image without omitting any. Each recognized item must be provided as an independent object in the "detectedItems" array with its own separate diagnosis, storage advice, and tailored rescue recipes.
+
+2. USER GEOGRAPHIC & CLIMATIC PROFILE:
+- Country: ${userLocation.country}
+- State / Province: ${userLocation.state}
+- City / Region: ${userLocation.city}
+Tailor all verdicts to this exact location:
+- Spoilage risk and estimated days left MUST reflect the ambient humidity, local temperature, and typical climate conditions of ${userLocation.city}, ${userLocation.state}, ${userLocation.country}.
+- Storage recommendations must specify practical preservation tips effective for ${userLocation.city}'s environment.
+- Rescue recipes MUST utilize commonly accessible regional pantry ingredients, local spices, and cooking styles familiar to households in ${userLocation.city}, ${userLocation.state}, ${userLocation.country}.
+- Estimate financial savings in standard local currency values (e.g. INR ₹ in India, or appropriate local units).
+
+Provide your response ONLY as a raw, valid JSON object (strictly NO markdown formatting, NO backticks, NO \`\`\`json code blocks) matching this schema:
 {
-  "itemName": "Specific recognizable name of food or prepared dish",
-  "category": "Produce" | "Leftovers" | "Dairy" | "Bakery" | "Protein" | "Pantry" | "Beverage" | "Other",
-  "portionSize": "Estimated portion or quantity (e.g., 'Approx 300g / 2 servings')",
-  "spoilageRisk": "low" | "medium" | "high" | "spoiled",
-  "spoilageNotes": "Detailed observation on visible freshness signs, wilting, ripening, browning, or condition",
-  "estimatedDaysLeft": 2,
-  "storageTips": "Actionable, precise advice on the best storage method to extend its shelf-life (container type, temperature, moisture prevention)",
-  "recipes": [
+  "summary": "Concise 1-2 sentence culinary summary of all recognized food items and priority action needed",
+  "locationContext": "${userLocation.city}, ${userLocation.state}, ${userLocation.country}",
+  "detectedItems": [
     {
-      "title": "Creative Rescue Recipe 1",
-      "time": "15 mins",
-      "ingredients": ["Main ingredient", "Common pantry item", "Seasoning"],
-      "instructions": "Clear 2-sentence preparation instructions to save this ingredient quickly"
-    },
-    {
-      "title": "Creative Rescue Recipe 2",
-      "time": "20 mins",
-      "ingredients": ["Main ingredient", "Secondary item"],
-      "instructions": "Alternative way to repurpose leftovers or ripe produce"
+      "itemName": "Specific recognizable name of this individual item (e.g., 'Cavendish Bananas', 'Fresh Spinach Leaves', 'Cooked Yellow Dal')",
+      "category": "Produce" | "Leftovers" | "Dairy" | "Bakery" | "Protein" | "Pantry" | "Beverage" | "Other",
+      "portionSize": "Estimated portion/quantity visible (e.g., '3 medium bananas (~350g)' or 'Approx 250g bowl')",
+      "spoilageRisk": "low" | "medium" | "high" | "spoiled",
+      "spoilageNotes": "Detailed observation on visible freshness signs, wilting, ripening, browning, or texture",
+      "estimatedDaysLeft": 2,
+      "storageTips": "Precise, actionable preservation advice specifically for this item in ${userLocation.city}'s climate (container, temperature, moisture prevention)",
+      "recipes": [
+        {
+          "title": "Regionally Tailored Rescue Recipe",
+          "time": "15 mins",
+          "ingredients": ["This food item", "Common local staple", "Local seasoning/spice"],
+          "instructions": "Clear, practical 2-sentence preparation instructions to rescue this ingredient quickly"
+        },
+        {
+          "title": "Creative Alternative / Combo Recipe",
+          "time": "20 mins",
+          "ingredients": ["This food item", "Secondary staple or complementary item"],
+          "instructions": "Another practical way to repurpose this food item before it spoils"
+        }
+      ],
+      "co2SavedKg": 1.2,
+      "financialSavings": 80,
+      "tags": ["produce", "fresh", "perishable"]
     }
-  ],
-  "co2SavedKg": 1.4,
-  "financialSavings": 120,
-  "tags": ["ingredient1", "ingredient2", "perishable"]
+  ]
 }
 `;
 
-    let analysis: any = null;
+    let rawAnalysis: any = null;
     try {
       const geminiResult = await model.generateContent([
         prompt,
@@ -125,10 +165,9 @@ Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks,
 
       const rawText = geminiResult.response.text();
       const cleanJson = rawText.replace(/```json|```/gi, "").trim();
-      analysis = JSON.parse(cleanJson);
+      rawAnalysis = JSON.parse(cleanJson);
     } catch (aiErr: any) {
-      console.warn("Gemini model execution fallback:", aiErr.message);
-      // Fallback with 1.5-flash if 2.5-flash had an issue
+      console.warn("Gemini primary model notice, using fallback:", aiErr.message);
       const fallbackModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const fallbackResult = await fallbackModel.generateContent([
         prompt,
@@ -141,21 +180,57 @@ Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks,
       ]);
       const rawText = fallbackResult.response.text();
       const cleanJson = rawText.replace(/```json|```/gi, "").trim();
-      analysis = JSON.parse(cleanJson);
+      rawAnalysis = JSON.parse(cleanJson);
     }
 
-    // Default fallbacks in case of unexpected fields
-    const itemName = analysis.itemName || "Identified Food Item";
-    const category = analysis.category || "Produce";
-    const spoilageRisk = analysis.spoilageRisk || "medium";
-    const estimatedDaysLeft = Number(analysis.estimatedDaysLeft) || 3;
-    const co2SavedKg = Number(analysis.co2SavedKg) || 1.1;
-    const financialSavings = Number(analysis.financialSavings) || 95;
+    // Normalize detectedItems array
+    let detectedItems: any[] = [];
+    if (
+      rawAnalysis?.detectedItems &&
+      Array.isArray(rawAnalysis.detectedItems) &&
+      rawAnalysis.detectedItems.length > 0
+    ) {
+      detectedItems = rawAnalysis.detectedItems;
+    } else if (rawAnalysis?.itemName) {
+      // Fallback if model returned a single item object
+      detectedItems = [rawAnalysis];
+    } else {
+      detectedItems = [
+        {
+          itemName: "Recognized Food Item",
+          category: "Produce",
+          portionSize: "Standard portion",
+          spoilageRisk: "medium",
+          spoilageNotes: "Assessed visual freshness condition",
+          estimatedDaysLeft: 3,
+          storageTips: "Store in a cool, ventilated container away from direct sunlight.",
+          recipes: [],
+          co2SavedKg: 1.1,
+          financialSavings: 80,
+          tags: ["food", "perishable"],
+        },
+      ];
+    }
+
+    // Primary item represents the most urgent or first recognized item for backward compatibility
+    const primaryItem = detectedItems.reduce((prev: any, curr: any) => {
+      const riskOrder: Record<string, number> = { spoiled: 4, high: 3, medium: 2, low: 1 };
+      const prevRisk = riskOrder[prev?.spoilageRisk] || 2;
+      const currRisk = riskOrder[curr?.spoilageRisk] || 2;
+      return currRisk > prevRisk ? curr : prev;
+    }, detectedItems[0]);
+
+    const itemName = primaryItem.itemName || "Identified Food Item";
+    const category = primaryItem.category || "Produce";
+    const spoilageRisk = primaryItem.spoilageRisk || "medium";
+    const estimatedDaysLeft = Number(primaryItem.estimatedDaysLeft) || 3;
+    const co2SavedKg = Number(primaryItem.co2SavedKg) || 1.1;
+    const financialSavings = Number(primaryItem.financialSavings) || 95;
 
     // STEP 3: Store Gemini Intelligence directly into Cloudinary Asset Metadata (DAM)
     try {
       await cloudinary.uploader.add_context(
-        `item=${encodeURIComponent(itemName)}|category=${category}|urgency=${spoilageRisk}|days_left=${estimatedDaysLeft}|saved_co2=${co2SavedKg}kg`,
+        `item=${encodeURIComponent(itemName)}|items_count=${detectedItems.length}|location=${encodeURIComponent(userLocation.city)}|urgency=${spoilageRisk}|days_left=${estimatedDaysLeft}`,
         [publicId]
       );
     } catch (cldContextErr) {
@@ -163,19 +238,6 @@ Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks,
     }
 
     // STEP 4: Build Cloudinary On-The-Fly Dynamic Badged URLs
-    // Badge color and message depending on spoilage risk
-    let badgeText = "FRESH";
-    let badgeBg = "059669"; // Emerald
-
-    if (spoilageRisk === "high" || spoilageRisk === "spoiled") {
-      badgeText = "EAT FIRST";
-      badgeBg = "dc2626"; // Red
-    } else if (spoilageRisk === "medium" || estimatedDaysLeft <= 2) {
-      badgeText = `USE IN ${estimatedDaysLeft}D`;
-      badgeBg = "d97706"; // Amber
-    }
-
-    // Cloudinary optimized dynamic URL with smart auto-crop, auto-format and auto-quality
     const badgedUrl = cloudinary.url(publicId, {
       width: 700,
       height: 700,
@@ -186,7 +248,6 @@ Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks,
       secure: true,
     });
 
-    // Cloudinary Social Good Impact Shareable Card
     const impactCardUrl = cloudinary.url(publicId, {
       width: 800,
       height: 800,
@@ -197,41 +258,48 @@ Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks,
       secure: true,
     });
 
-    // STEP 5: Persist to MongoDB Food Inventory
-    let savedItem: any = null;
+    // STEP 5: Persist ALL recognized items to MongoDB Food Inventory
+    const savedItems: any[] = [];
     if (saveToInventory) {
       await connectToDatabase();
-      savedItem = await FoodItem.create({
-        userId,
-        name: itemName,
-        category,
-        portionSize: analysis.portionSize || "Standard portion",
-        spoilageRisk,
-        spoilageNotes: analysis.spoilageNotes || "",
-        estimatedDaysLeft,
-        storageTips: analysis.storageTips || "",
-        recipes: analysis.recipes || [],
-        co2SavedKg,
-        financialSavings,
-        cloudinaryPublicId: publicId,
-        cloudinaryUrl: secureUrl,
-        badgedUrl,
-        dominantColors: dominantColors.slice(0, 5),
-        tags: analysis.tags || [],
-        status: "in_fridge",
-      });
+      for (const itemData of detectedItems) {
+        try {
+          const createdDoc = await FoodItem.create({
+            userId,
+            name: itemData.itemName || "Identified Food Item",
+            category: itemData.category || "Produce",
+            portionSize: itemData.portionSize || "Standard portion",
+            spoilageRisk: itemData.spoilageRisk || "medium",
+            spoilageNotes: itemData.spoilageNotes || "",
+            estimatedDaysLeft: Number(itemData.estimatedDaysLeft) || 3,
+            storageTips: itemData.storageTips || "",
+            recipes: itemData.recipes || [],
+            co2SavedKg: Number(itemData.co2SavedKg) || 1.1,
+            financialSavings: Number(itemData.financialSavings) || 85,
+            cloudinaryPublicId: publicId,
+            cloudinaryUrl: secureUrl,
+            badgedUrl,
+            dominantColors: dominantColors.slice(0, 5),
+            tags: itemData.tags || [],
+            status: "in_fridge",
+          });
+          savedItems.push(createdDoc);
+        } catch (dbSaveErr) {
+          console.error("Error saving detected item to database:", dbSaveErr);
+        }
+      }
     }
 
     return NextResponse.json({
       success: true,
+      summary: rawAnalysis?.summary || `Recognized ${detectedItems.length} food items in this scan`,
+      locationContext: `${userLocation.city}, ${userLocation.state}, ${userLocation.country}`,
+      detectedItems,
       analysis: {
-        ...analysis,
-        itemName,
-        category,
-        spoilageRisk,
-        estimatedDaysLeft,
-        co2SavedKg,
-        financialSavings,
+        ...primaryItem,
+        summary: rawAnalysis?.summary,
+        locationContext: `${userLocation.city}, ${userLocation.state}, ${userLocation.country}`,
+        detectedItems,
       },
       cloudinary: {
         publicId,
@@ -240,7 +308,8 @@ Provide your output ONLY as a raw, valid JSON object (no markdown, no backticks,
         impactCardUrl,
         dominantColors,
       },
-      item: savedItem,
+      item: savedItems[0] || null,
+      items: savedItems,
     });
   } catch (error: any) {
     console.error("Food analysis error:", error);
