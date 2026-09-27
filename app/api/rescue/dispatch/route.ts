@@ -18,10 +18,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "";
     const urgency = searchParams.get("urgency") || "";
+    const donorType = searchParams.get("donorType") || "";
 
     const query: any = {};
     if (status) query.status = status;
     if (urgency) query.urgency = urgency;
+    if (donorType) query.donorType = donorType;
 
     const dispatches = await RescueDispatch.find(query).sort({ createdAt: -1 }).limit(50);
 
@@ -42,14 +44,14 @@ export async function POST(req: NextRequest) {
       session?.user?.id ||
       (session?.user as any)?._id ||
       (session?.user as any)?.email ||
-      "community_donor";
+      "community_member";
 
     const formData = await req.formData();
     const file = formData.get("file") as File;
-    const title = (formData.get("title") as string) || "Surplus Food Rescue";
-    const donorName = (formData.get("donorName") as string) || "Local Food Donor";
-    const donorType = (formData.get("donorType") as any) || "restaurant";
-    const foodCategory = (formData.get("foodCategory") as string) || "Prepared Meals";
+    const title = (formData.get("title") as string) || "Surplus Leftover Food";
+    const donorName = (formData.get("donorName") as string) || "Community Kitchen / Cook";
+    const donorType = (formData.get("donorType") as any) || "household";
+    const foodCategory = (formData.get("foodCategory") as string) || "Home-cooked Leftover";
     const description = (formData.get("description") as string) || "";
     const urgency = (formData.get("urgency") as any) || "today";
 
@@ -63,11 +65,11 @@ export async function POST(req: NextRequest) {
     const establishment = (formData.get("establishment") as string) || "";
 
     if (!file) {
-      return NextResponse.json({ error: "Food photo is required" }, { status: 400 });
+      return NextResponse.json({ error: "Please upload or capture a photo of the food" }, { status: 400 });
     }
     if (isNaN(lat) || isNaN(lng)) {
       return NextResponse.json(
-        { error: "Valid pickup location coordinates are required" },
+        { error: "Please choose a pickup location" },
         { status: 400 }
       );
     }
@@ -75,13 +77,13 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // 1. Upload to Cloudinary with tags and responsive optimization
+    // 1. Upload to Cloudinary with tags
     const cldUpload: any = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder: "morsel_rescue_surplus",
           resource_type: "image",
-          tags: ["food_rescue", "surplus_food", foodCategory.toLowerCase().replace(/\s+/g, "_")],
+          tags: ["food_rescue", "leftovers", donorType, foodCategory.toLowerCase().replace(/\s+/g, "_")],
           context: {
             donor_name: donorName,
             title,
@@ -99,11 +101,42 @@ export async function POST(req: NextRequest) {
     const surplusMediaUrl = cldUpload.secure_url;
     const surplusCloudinaryId = cldUpload.public_id;
 
-    // 2. Gemini Multimodal AI Visual Verification of Food & Servings
-    let estimatedServings = 25;
-    let co2DivertedKg = 10;
+    // 2. Multimodal AI Analysis: Storage Shelf-Life & Repurposed Upcycled Recipes
+    let estimatedServings = 4;
+    let co2DivertedKg = 2;
     let freshnessScore = 95;
-    let aiSafetyNotes = "Surplus food visually verified fresh and suitable for consumption.";
+    let aiSafetyNotes = "Food visually checked; appears fresh and wholesome.";
+    let storageAdvice = {
+      safeStorageDays: 2,
+      storageMethod: "Store in an airtight glass or food-safe plastic container in refrigerator below 4°C.",
+      expiryHours: 36,
+    };
+    let repurposedRecipes = [
+      {
+        title: "Quick Stir-Fry Reheat Bowl",
+        description: "Re-toss the meal with fresh herbs and a dash of oil over medium heat for high aroma and safe eating.",
+        effortLevel: "Quick & Easy (10-15m)" as const,
+        prepTimeMinutes: 10,
+        ingredientsNeeded: ["Cooking oil", "Fresh cilantro / herbs", "Pinch of salt"],
+        instructions: [
+          "Heat 1 tbsp oil in a pan over medium heat.",
+          "Add the food and toss gently until piping hot throughout.",
+          "Garnish with fresh herbs and serve immediately.",
+        ],
+      },
+      {
+        title: "Crispy Upcycled Patties / Cutlets",
+        description: "Mash the leftovers with boiled potatoes or breadcrumbs and shallow fry for delicious crispy snacks.",
+        effortLevel: "Moderate (20-30m)" as const,
+        prepTimeMinutes: 20,
+        ingredientsNeeded: ["Breadcrumbs or cornstarch", "Boiled potato (optional)", "Spices to taste"],
+        instructions: [
+          "Mash the food lightly and mix with binding agent.",
+          "Shape into small flat round patties.",
+          "Pan-sear on both sides with light oil until golden brown.",
+        ],
+      },
+    ];
 
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey) {
@@ -111,16 +144,42 @@ export async function POST(req: NextRequest) {
         const genAI = new GoogleGenerativeAI(geminiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-        const prompt = `Analyze this surplus food donation photo for an NGO food rescue network.
+        const prompt = `You are an expert culinary food scientist and sustainability specialist.
+Analyze this photo of surplus / leftover food submitted by a household or food establishment for rescue.
 Food Category: ${foodCategory}
-Title: ${title}
+Listing Title: ${title}
+Donor Type: ${donorType}
+Description: ${description}
 
-Respond ONLY with valid JSON in this exact structure:
+Analyze the food carefully and return ONLY a valid JSON object matching this exact schema:
 {
-  "estimatedServings": <number of standard meal portions visible in this photo, between 5 and 500>,
-  "co2DivertedKg": <estimated kg of CO2 equivalent emissions saved by diverting this food from landfill methane decomposition, typically 0.35 to 0.5 kg per meal>,
-  "freshnessScore": <integer 0-100 indicating food freshness>,
-  "safetyNotes": "<one concise sentence confirming visual freshness and handling guidance>"
+  "estimatedServings": <number of standard meal portions visible, integer between 1 and 200>,
+  "co2DivertedKg": <estimated kg of CO2 equivalent emissions saved by rescuing this food, roughly 0.4 kg per serving>,
+  "freshnessScore": <integer 0 to 100 based on visual appearance, color, and state>,
+  "safetyNotes": "<one clear, encouraging sentence on how to handle/consume it safely>",
+  "storageAdvice": {
+    "safeStorageDays": <realistic number of days it can be safely kept in home or commercial refrigeration, integer 1 to 7>,
+    "storageMethod": "<practical instruction on how to store properly, e.g. airtight container at <= 4°C, freeze if not used within 2 days>",
+    "expiryHours": <hours until it should be consumed if refrigerated, integer e.g. 24, 48, 72>
+  },
+  "repurposedRecipes": [
+    {
+      "title": "<creative new recipe name made by transforming these leftovers>",
+      "description": "<one enticing sentence describing what this new dish turns into>",
+      "effortLevel": "<One of: 'Minimal (5m)', 'Quick & Easy (10-15m)', 'Moderate (20-30m)', 'Batch Cook (45m+)'>",
+      "prepTimeMinutes": <estimated minutes to make, integer>,
+      "ingredientsNeeded": ["<list of 2-4 basic pantry items needed>"],
+      "instructions": ["<step 1>", "<step 2>", "<step 3>"]
+    },
+    {
+      "title": "<second distinct recipe idea>",
+      "description": "<description>",
+      "effortLevel": "<effort>",
+      "prepTimeMinutes": <minutes>,
+      "ingredientsNeeded": ["<items>"],
+      "instructions": ["<step 1>", "<step 2>"]
+    }
+  ]
 }`;
 
         const mimeType = file.type || "image/jpeg";
@@ -138,13 +197,32 @@ Respond ONLY with valid JSON in this exact structure:
         const jsonMatch = rawText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          if (parsed.estimatedServings) estimatedServings = Math.max(5, Math.round(parsed.estimatedServings));
-          if (parsed.co2DivertedKg) co2DivertedKg = Math.max(1, Math.round(parsed.co2DivertedKg));
+          if (parsed.estimatedServings) estimatedServings = Math.max(1, Math.round(parsed.estimatedServings));
+          if (parsed.co2DivertedKg) co2DivertedKg = Math.max(0.5, Number(parsed.co2DivertedKg.toFixed(1)));
           if (parsed.freshnessScore) freshnessScore = Math.min(100, Math.max(10, parsed.freshnessScore));
           if (parsed.safetyNotes) aiSafetyNotes = parsed.safetyNotes;
+
+          if (parsed.storageAdvice) {
+            storageAdvice = {
+              safeStorageDays: Math.max(1, Math.min(10, parsed.storageAdvice.safeStorageDays || 2)),
+              storageMethod: parsed.storageAdvice.storageMethod || storageAdvice.storageMethod,
+              expiryHours: Math.max(12, parsed.storageAdvice.expiryHours || 36),
+            };
+          }
+
+          if (Array.isArray(parsed.repurposedRecipes) && parsed.repurposedRecipes.length > 0) {
+            repurposedRecipes = parsed.repurposedRecipes.slice(0, 3).map((r: any) => ({
+              title: r.title || "Repurposed Meal",
+              description: r.description || "A delicious transformed dish from leftover food.",
+              effortLevel: r.effortLevel || "Quick & Easy (10-15m)",
+              prepTimeMinutes: r.prepTimeMinutes || 15,
+              ingredientsNeeded: Array.isArray(r.ingredientsNeeded) ? r.ingredientsNeeded : ["Basic pantry seasonings"],
+              instructions: Array.isArray(r.instructions) ? r.instructions : ["Heat thoroughly and serve."],
+            }));
+          }
         }
       } catch (aiErr) {
-        console.warn("Gemini AI evaluation notice, using standard estimates:", aiErr);
+        console.warn("AI Food Evaluation fallback:", aiErr);
       }
     }
 
@@ -166,6 +244,10 @@ Respond ONLY with valid JSON in this exact structure:
       co2DivertedKg,
       freshnessScore,
       aiSafetyNotes,
+      storageAdvice,
+      repurposedRecipes,
+      claims: [],
+      comments: [],
       location: {
         lat,
         lng,
@@ -181,7 +263,7 @@ Respond ONLY with valid JSON in this exact structure:
     return NextResponse.json({
       success: true,
       dispatch,
-      message: "Surplus food rescue dispatch created successfully",
+      message: "Food rescue post listed successfully!",
     });
   } catch (error: any) {
     console.error("Rescue dispatch creation failed:", error);
