@@ -1,20 +1,28 @@
 "use client";
 
-import React from "react";
-import { useSession, signOut } from "next-auth/react";
-import Link from "next/link";
-import { usePathname, useSearchParams, useRouter } from "next/navigation";
-import { Home, User, LogIn, LogOut, Camera, Refrigerator } from "lucide-react";
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import {
+  Camera,
+  Globe,
+  Home,
+  LogIn,
+  LogOut,
+  Refrigerator,
+  User,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import type React from "react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export default function DockNav() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -25,7 +33,6 @@ export default function DockNav() {
     e: React.MouseEvent,
     item: { href: string; dashboardTab?: string },
   ) => {
-    // Only intercept when user is ALREADY on /dashboard AND clicking a dashboard-internal tab
     if (item.dashboardTab && pathname === "/dashboard") {
       if (status !== "authenticated") {
         e.preventDefault();
@@ -42,8 +49,6 @@ export default function DockNav() {
       return;
     }
 
-    // For all other routes (Profile, Home, Auth, or navigating to Dashboard from another page):
-    // Do NOT preventDefault! Let standard Next.js page navigation occur smoothly.
   };
 
   const navItems = [
@@ -65,6 +70,12 @@ export default function DockNav() {
       icon: Refrigerator,
       href: "/dashboard?tab=inventory",
       dashboardTab: "inventory",
+      show: true,
+    },
+    {
+      name: "FieldWatch",
+      icon: Globe,
+      href: "/fieldwatch",
       show: true,
     },
     {
@@ -90,8 +101,8 @@ export default function DockNav() {
             item.name === "Home"
               ? pathname === "/"
               : pathname === "/dashboard" && item.dashboardTab
-              ? currentTab === item.dashboardTab
-              : pathname === item.href;
+                ? currentTab === item.dashboardTab
+                : pathname === item.href;
 
           return (
             <Tooltip key={`${item.name}-${idx}`}>
@@ -115,7 +126,7 @@ export default function DockNav() {
             <div className="w-0.5 h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
             <Tooltip>
               <TooltipTrigger asChild>
-                <button onClick={() => signOut()}>
+                <button type="button" onClick={() => signOut()}>
                   <DockItem
                     item={{ name: "Logout", icon: LogOut }}
                     isActive={false}
@@ -156,7 +167,7 @@ function DockItem({
             ? "bg-sky-900 text-white shadow-md dark:bg-sky-700"
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800",
           isButton &&
-            "text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+            "text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20",
         )}
       >
         <Icon size={20} />
