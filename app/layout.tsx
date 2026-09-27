@@ -40,11 +40,11 @@ export default function RootLayout({
             <TooltipProvider>
               <BackgroundPattern />
               {/* Floating Language Dropdown in top right */}
-              <div className="fixed top-5 right-5 z-50">
+              <div className="fixed top-3 right-3 sm:top-5 sm:right-5 z-50">
                 <LanguageSelector />
               </div>
               <Suspense fallback={null}>
-                <main className="flex-1 pb-24">{children}</main>
+                <main className="flex-1 pb-28 sm:pb-24">{children}</main>
                 <DockNav />
               </Suspense>
             </TooltipProvider>
