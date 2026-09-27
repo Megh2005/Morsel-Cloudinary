@@ -575,9 +575,9 @@ export default function OpenStreetMapLocationPicker({
           {showDropdown && (
             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border-2 border-slate-900 dark:border-slate-700 max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
               {searchResults.length > 0 ? (
-                searchResults.map((item) => (
+                searchResults.map((item, idx) => (
                   <button
-                    key={item.id}
+                    key={`${item.id}-${idx}`}
                     type="button"
                     onClick={() => handleSelectResult(item)}
                     className="w-full text-left p-2.5 hover:bg-sky-50 dark:hover:bg-slate-800/80 flex items-start gap-2.5 transition-colors cursor-pointer"
