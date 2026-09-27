@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
           const distanceKm =
             lat && lng
               ? getDistanceKm(parseFloat(lat), parseFloat(lng), itemLat, lon)
+              : undefined;
+
           items.push({
             id: `photon-${props.osm_id || "item"}-${items.length}`,
             name,
