@@ -263,15 +263,13 @@ export default function OpenStreetMapLocationPicker({
       center: [startCoords.lat, startCoords.lng],
       zoom: initialPosition ? 16 : 13,
       zoomControl: true,
-      attributionControl: true,
+      attributionControl: false,
       fadeAnimation: false, // Prevents tile vibration
     });
 
-    // Add standard OpenStreetMap tiles
+    // Add map tiles
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
     }).addTo(map);
 
     mapInstanceRef.current = map;
@@ -613,7 +611,7 @@ export default function OpenStreetMapLocationPicker({
                 ))
               ) : (
                 <div className="p-4 text-center text-xs text-slate-500">
-                  {isSearching ? "Searching nearby OpenStreetMap establishments..." : "No establishments found nearby"}
+                  {isSearching ? "Searching nearby places & landmarks..." : "No places found nearby"}
                 </div>
               )}
             </div>
@@ -642,13 +640,13 @@ export default function OpenStreetMapLocationPicker({
           <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
           <span className="truncate">
             {addressLoading
-              ? "Resolving OpenStreetMap address..."
+              ? "Finding pick-up address..."
               : detectingLocation
-              ? "Detecting your location & country..."
+              ? "Finding your current location..."
               : resolvedAddress ||
                 (activePin
-                  ? "Present location tagged"
-                  : "Click map or search nearby establishments to drop pin")}
+                  ? "Pick-up location tagged"
+                  : "Tap on map or search above to select pick-up location")}
           </span>
         </div>
         <div className="shrink-0 flex items-center gap-2">
